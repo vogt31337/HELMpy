@@ -1,6 +1,5 @@
 
-from os.path import basename 
-
+from os.path import basename
 import numpy as np
 import pandas as pd
 
@@ -9,8 +8,8 @@ import pandas as pd
 def process_branches(branches, N_branches, case):
     """Process each branch of a case data to create Ytrans, Yshunt and others."""
     for i in range(N_branches):
-        FromBus = branches[0][i]
-        ToBus = branches[1][i]
+        FromBus = int(branches[0][i])-1
+        ToBus = int(branches[1][i])-1
         R = branches[2][i]
         X = branches[3][i]
         BTotal = branches[4][i]
@@ -140,14 +139,14 @@ def create_case_data_object_from_xlsx(grid_data_file_path, case_name=None):
     case.Yshunt[:] = np.copy(case.Shunt)
 
     for i in range(N):
-        case.Number_bus[buses[0][i]] = i
+        case.Number_bus[int(buses[0][i])-1] = i
         if buses[1][i] == 3:
-            case.slack_bus = buses[0][i]
+            case.slack_bus = int(buses[0][i])
             case.slack = i
 
     pos = 0
     for i in range(N_generators):
-        bus_i = case.Number_bus[generators[0][i]]
+        bus_i = case.Number_bus[int(generators[0][i])-1]
         if bus_i != case.slack:
             case.list_gen[pos] = bus_i
             pos += 1
@@ -179,18 +178,21 @@ def create_case_data_object_from_xlsx(grid_data_file_path, case_name=None):
 
 class CaseData:
     """Data of a case."""
-    def __init__(self, name, N, N_generators):
+    def __init__(self, name: str, N: np.int64, N_generators: np.int64):
         # case name
         self.name = name
 
         # case data
         self.N = N
-        self.N_branches = np.int64
-        self.slack_bus = np.int64
-        self.slack = np.int64
-        self.Number_bus = dict()
-        self.Buses_type = ['PQ' for i in range(N)]
-        self.list_gen = np.empty(N_generators-1, dtype=np.int64)
+        self.N_generators = N_generators
+        self.N_branches = np.int64(0)  # Initialize with a default value
+        self.slack_bus = np.int64(0)    # Initialize with a default value
+        self.slack = np.int64(0)         # Initialize with a default value
+        self.Number_bus = np.zeros(N, dtype=np.int64)  # Use an array instead of a dict
+        # dtype must be wide enough for 'Slack'/'PVLIM'; a plain np.array(['PQ']*N)
+        # would be '<U2' and silently truncate longer type strings.
+        self.Buses_type = np.array(['PQ'] * N, dtype='<U5')  # Use an array for types
+        self.list_gen = np.empty(N_generators - 1, dtype=np.int64)
         self.V = np.empty(N, dtype=np.float64)
         self.Pd = np.empty(N, dtype=np.float64)
         self.Qd = np.empty(N, dtype=np.float64)
@@ -199,18 +201,18 @@ class CaseData:
         self.Qgmin = np.empty(N, dtype=np.float64)
         self.Shunt = np.empty(N, dtype=np.complex128)
         self.conduc_buses = np.full(N, False)
-        self.Yshunt =  np.empty(N, dtype=np.complex128)
-        self.Ytrans = np.zeros((N,N), dtype=np.complex128)
-        self.Y = np.zeros((N,N), dtype=np.complex128)
+        self.Yshunt = np.empty(N, dtype=np.complex128)
+        self.Ytrans = np.zeros((N, N), dtype=np.complex128)
+        self.Y = np.zeros((N, N), dtype=np.complex128)
         self.Yre = np.real(self.Y)
         self.Yimag = np.imag(self.Y)
-        self.branches_buses = [[i] for i in range(N)]
-        self.Ybr_list = list()
+        self.branches_buses = [[i] for i in range(N)]  # Convert list of lists to a 2D array
+        self.Ybr_list = []  # List of [from_bus, to_bus, 2x2 complex Ybr] triples
         self.phase_barras = np.full(N, False)
-        self.phase_dict = dict()
+        self.phase_dict = np.zeros(N, dtype=np.int64)  # Use an array instead of a dict
 
         # case parameters
-        self.scale = 1
+        self.scale = 1.0
 
     def set_scale(self, scale):
         self.scale = scale
@@ -222,8 +224,7 @@ class CaseData:
         self.Pd /= self.scale
         self.Qd /= self.scale
         self.Pg /= self.scale
-        self.scale = 1
-
+        self.scale = 1.0
 
 class RunVariables:
     """Group of variables neededed in the run."""
